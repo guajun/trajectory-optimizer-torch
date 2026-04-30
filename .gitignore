@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Training outputs (per-run artifacts written by runner.py)
+optimized_*/
+configs/**/optimized_*/
+**/tensorboard/

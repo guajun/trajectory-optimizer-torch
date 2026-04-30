@@ -1,0 +1,79 @@
+# L-BFGS variant of the single-plane experiment.
+# L-BFGS is a quasi-Newton method that takes far fewer outer steps but each
+# step internally evaluates the closure multiple times during line search.
+# Tune `steps` (outer steps) together with `lbfgs_max_iter` (inner iterations).
+
+seed: 0
+device_preference: cuda
+device_ids: [0]
+output_dir: optimized_single_plane_lbfgs
+
+tensorboard:
+  enabled: true
+  log_dir: tensorboard
+  flush_secs: 10
+
+grid:
+  plane_half_size_m: 0.005
+  optimize_size: 36
+  render_size: 180
+
+target:
+  expression: amplitude_m * tan(phase_scale_pi * pi * x / plane_half_size_m)
+  blur_sigma_m: 0.00024
+  intensity_gain: 1.0
+  init_sample_count: 1400
+  plot_sample_count: 2200
+  parameters:
+    amplitude_m: 0.0008
+    phase_scale_pi: 0.35
+  projection:
+    batch_size: 4096
+    newton_steps: 8
+    interval_scan_count: 4097
+    global_seed_count: 9
+    local_initial_offsets_m: [0.0]
+
+model:
+  trajectory_initializer: fixed_grid
+  trajectory_mode: pyramid          # pyramid with a single layer == single plane
+  trajectory_pyramid_layers:
+    - z_m: 0.010
+      xy_step_m: 0.00025
+  freeze_centers: true
+  init_moment_strength: 2.4e-8
+  max_moment_strength: 8.0e-8
+  particle_moment_magnitude: 2.0e-11
+  rotational_drag_coefficient: 2.0e-13
+  static_friction_torque: 1.0e-12
+  optimize_dwell_time: true
+  min_dwell_time_s: 0.003
+  max_dwell_time_s: 0.050
+  init_dwell_time_s: 0.008
+  init_activation_margin: 1.05
+  brightness_gamma: 0.92
+  recency_scale: 0.0
+  waypoint_block_size: 32
+  point_chunk_size: 2048
+
+optimizer:
+  name: lbfgs
+  steps: 80                  # outer L-BFGS steps; each does up to lbfgs_max_iter inner iterations
+  learning_rate: 1.0         # with strong_wolfe line search, lr=1.0 is the recommended default
+  max_grad_norm: 1.0         # ignored for L-BFGS (line search handles step length)
+  print_every: 1
+  early_stop_patience: 15
+  min_delta: 1.0e-6
+  lbfgs_history_size: 20
+  lbfgs_max_iter: 20
+  lbfgs_tolerance_grad: 1.0e-7
+  lbfgs_tolerance_change: 1.0e-9
+  lbfgs_line_search: strong_wolfe
+
+loss_weights:
+  full_image_mse: 1.0
+  moment_l2: 5.0e+12
+  total_dwell_time: 0.0
+  smoothness: 0.0
+  curvature: 0.0
+  z_l2: 0.0
