@@ -1,0 +1,14 @@
+[project]
+name = "trajectory-optimizer-torch"
+version = "0.1.0"
+description = "Torch-based trajectory optimizer for analytic target fitting and dipole write planning"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+	"pyyaml>=6.0.2",
+	"tensorboard>=2.16",
+	"torch>=2.4,<3",
+]
+
+[tool.uv]
+package = false
