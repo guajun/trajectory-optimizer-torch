@@ -6,11 +6,22 @@ from pathlib import Path
 
 import torch
 
-import train_function_dipole_trajectory_torch as legacy
-
 from .config import ExperimentConfig, load_experiment_config
+from .losses import all_finite_tensors, full_image_mse, model_regularization_terms
 from .model import SequentialOmniMagnetTrajectoryField
+from .reporting import (
+    center_pixels,
+    convergence_svg,
+    function_plot_svg,
+    polyline_pixels,
+    summarize_waypoint_contributions,
+    svg_raster,
+    write_function_description,
+    write_index,
+    write_waypoint_contribution_report,
+)
 from .targets import AnalyticGraphTarget, build_grid, target_ridge_map
+from .training_logging import create_tensorboard_writer, log_tensorboard_step
 from .trajectory_initializers import TrajectoryInitializer, build_trajectory_initializer
 from .utils import resolve_device
 
@@ -59,7 +70,7 @@ def run_training(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config_dict = config.to_dict()
-    tensorboard_writer, tensorboard_log_dir = legacy.create_tensorboard_writer(output_dir, config_dict)
+    tensorboard_writer, tensorboard_log_dir = create_tensorboard_writer(output_dir, config_dict)
 
     optimize_grid = build_grid(config.grid.optimize_size, config.grid.plane_half_size_m, device)
     render_grid = build_grid(config.grid.render_size, config.grid.plane_half_size_m, device)
@@ -96,8 +107,8 @@ def run_training(
     for step in range(config.optimizer.steps):
         optimizer.zero_grad(set_to_none=True)
         forward = model(optimize_grid.points)
-        data_loss = legacy.full_image_mse(forward["brightness"], target_optimize)
-        reg_terms = legacy.model_regularization_terms(model, loss_weights)
+        data_loss = full_image_mse(forward["brightness"], target_optimize)
+        reg_terms = model_regularization_terms(model, loss_weights)
         reg_loss = reg_terms["total"]
         loss = loss_weights["full_image_mse"] * data_loss + reg_loss
         if not torch.isfinite(loss):
@@ -108,14 +119,14 @@ def run_training(
         torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.max_grad_norm)
         optimizer.step()
 
-        if not legacy.all_finite_tensors(model):
+        if not all_finite_tensors(model):
             print(f"non_finite_parameters at step={step:04d}")
             break
 
         loss_value = float(loss.detach().cpu().item())
         data_loss_value = float(data_loss.detach().cpu().item())
         history.append((step, loss_value))
-        legacy.log_tensorboard_step(tensorboard_writer, step, loss, data_loss, reg_terms, model, forward)
+        log_tensorboard_step(tensorboard_writer, step, loss, data_loss, reg_terms, model, forward)
 
         if loss_value + config.optimizer.min_delta < best_loss:
             best_loss = loss_value
@@ -161,17 +172,17 @@ def run_training(
         waypoint_index = fitted["waypoint_index"].detach().cpu()
         target.total_dwell_time_s = float(fitted["total_dwell_time_s"].detach().cpu().item())
         residual = (target_render.detach().cpu() - brightness).abs()
-        contribution_stats = legacy.summarize_waypoint_contributions(model, render_grid.points)
+        contribution_stats = summarize_waypoint_contributions(model, render_grid.points)
 
     polyline = [
-        legacy.polyline_pixels(poly.detach().cpu(), config.grid.plane_half_size_m, config.grid.render_size)
+        polyline_pixels(poly.detach().cpu(), config.grid.plane_half_size_m, config.grid.render_size)
         for poly in plot_samples.polyline_xy
     ]
-    markers = legacy.center_pixels(centers, config.grid.plane_half_size_m, config.grid.render_size)
+    markers = center_pixels(centers, config.grid.plane_half_size_m, config.grid.render_size)
     render_grid_cpu = {"size": render_grid.size, "pixels": render_grid.pixels.detach().cpu()}
 
     (output_dir / "input_function_plot.svg").write_text(
-        legacy.function_plot_svg(
+        function_plot_svg(
             title="Input analytic function",
             description="Visible branches of the configured analytic target y = f(x).",
             size=render_grid_cpu["size"],
@@ -180,7 +191,7 @@ def run_training(
         encoding="utf-8",
     )
     (output_dir / "target_ridge.svg").write_text(
-        legacy.svg_raster(
+        svg_raster(
             title="Analytic target ridge",
             description="Blurred brightness target generated from point-to-curve distance.",
             grid=render_grid_cpu,
@@ -190,7 +201,7 @@ def run_training(
         encoding="utf-8",
     )
     (output_dir / "fitted_ridge.svg").write_text(
-        legacy.svg_raster(
+        svg_raster(
             title="Sequential OmniMagnet fit",
             description="Training result with sequential write waypoints and full-image loss.",
             grid=render_grid_cpu,
@@ -201,7 +212,7 @@ def run_training(
         encoding="utf-8",
     )
     (output_dir / "residual_map.svg").write_text(
-        legacy.svg_raster(
+        svg_raster(
             title="Absolute residual map",
             description="Per-pixel residual over the full 1 cm x 1 cm plane.",
             grid=render_grid_cpu,
@@ -210,7 +221,7 @@ def run_training(
         ),
         encoding="utf-8",
     )
-    (output_dir / "convergence.svg").write_text(legacy.convergence_svg(history), encoding="utf-8")
+    (output_dir / "convergence.svg").write_text(convergence_svg(history), encoding="utf-8")
     (output_dir / "optimized_waypoints.txt").write_text(
         "\n".join(
             f"waypoint={int(path_id):02d}, center=({1000.0 * center[0]:+.3f}, {1000.0 * center[1]:+.3f}, {1000.0 * center[2]:.3f}) mm, "
@@ -221,9 +232,9 @@ def run_training(
         ),
         encoding="utf-8",
     )
-    legacy.write_index(output_dir, best_loss, history, centers, moments, dwell_times, waypoint_index, device.type, target)
-    legacy.write_function_description(output_dir, target)
-    legacy.write_waypoint_contribution_report(output_dir, contribution_stats)
+    write_index(output_dir, best_loss, history, centers, moments, dwell_times, waypoint_index, device.type, target)
+    write_function_description(output_dir, target)
+    write_waypoint_contribution_report(output_dir, contribution_stats)
 
     print(f"best_loss={best_loss:.6f}")
     print(f"device={device.type}")
