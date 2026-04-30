@@ -61,6 +61,7 @@ model:
   point_chunk_size: 2048
 
 optimizer:
+  name: adam
   steps: 1500
   learning_rate: 0.005
   max_grad_norm: 1.0

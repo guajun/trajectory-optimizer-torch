@@ -39,6 +39,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _build_optimizer(model: torch.nn.Module, optimizer_cfg) -> torch.optim.Optimizer:
+    name = optimizer_cfg.name.strip().lower()
+    params = [p for p in model.parameters() if p.requires_grad]
+    if name == "adam":
+        return torch.optim.Adam(params, lr=optimizer_cfg.learning_rate)
+    if name == "lbfgs":
+        line_search = optimizer_cfg.lbfgs_line_search
+        line_search_fn = None if line_search in (None, "", "none") else line_search
+        return torch.optim.LBFGS(
+            params,
+            lr=optimizer_cfg.learning_rate,
+            history_size=int(optimizer_cfg.lbfgs_history_size),
+            max_iter=int(optimizer_cfg.lbfgs_max_iter),
+            tolerance_grad=float(optimizer_cfg.lbfgs_tolerance_grad),
+            tolerance_change=float(optimizer_cfg.lbfgs_tolerance_change),
+            line_search_fn=line_search_fn,
+        )
+    raise ValueError(f"Unsupported optimizer.name: {optimizer_cfg.name!r}")
+
+
 def _attach_target_metadata(target: AnalyticGraphTarget, model: SequentialOmniMagnetTrajectoryField) -> None:
     target.trajectory_mode = model.trajectory_mode
     target.trajectory_grid_shape = model.trajectory_grid_shape
@@ -97,27 +117,45 @@ def run_training(
     model = SequentialOmniMagnetTrajectoryField(config, target_samples, trajectory_spec, device)
     _attach_target_metadata(target, model)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.optimizer.learning_rate)
+    optimizer = _build_optimizer(model, config.optimizer)
+    is_lbfgs = isinstance(optimizer, torch.optim.LBFGS)
     history: list[tuple[int, float]] = []
     best_loss = float("inf")
     best_state = None
     patience = 0
     loss_weights = dict(config.loss_weights)
+    closure_state: dict[str, object] = {}
 
-    for step in range(config.optimizer.steps):
+    def closure() -> torch.Tensor:
         optimizer.zero_grad(set_to_none=True)
         forward = model(optimize_grid.points)
         data_loss = full_image_mse(forward["brightness"], target_optimize)
         reg_terms = model_regularization_terms(model, loss_weights)
-        reg_loss = reg_terms["total"]
-        loss = loss_weights["full_image_mse"] * data_loss + reg_loss
+        loss = loss_weights["full_image_mse"] * data_loss + reg_terms["total"]
+        if torch.isfinite(loss):
+            loss.backward()
+        closure_state["forward"] = forward
+        closure_state["data_loss"] = data_loss
+        closure_state["reg_terms"] = reg_terms
+        closure_state["loss"] = loss
+        return loss
+
+    for step in range(config.optimizer.steps):
+        if is_lbfgs:
+            optimizer.step(closure)
+        else:
+            closure()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.max_grad_norm)
+            optimizer.step()
+
+        loss = closure_state["loss"]
+        data_loss = closure_state["data_loss"]
+        reg_terms = closure_state["reg_terms"]
+        forward = closure_state["forward"]
+
         if not torch.isfinite(loss):
             print(f"non_finite_loss at step={step:04d}")
             break
-
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), config.optimizer.max_grad_norm)
-        optimizer.step()
 
         if not all_finite_tensors(model):
             print(f"non_finite_parameters at step={step:04d}")

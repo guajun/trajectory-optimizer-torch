@@ -88,12 +88,19 @@ class ModelConfig:
 
 @dataclass(slots=True)
 class OptimizerConfig:
+    name: str = "adam"
     steps: int = 1500
     learning_rate: float = 0.005
     max_grad_norm: float = 1.0
     print_every: int = 1
     early_stop_patience: int = 120
     min_delta: float = 1.0e-5
+    # L-BFGS-specific options (ignored for other optimizers).
+    lbfgs_history_size: int = 20
+    lbfgs_max_iter: int = 20
+    lbfgs_tolerance_grad: float = 1.0e-7
+    lbfgs_tolerance_change: float = 1.0e-9
+    lbfgs_line_search: str = "strong_wolfe"
 
 
 @dataclass(slots=True)

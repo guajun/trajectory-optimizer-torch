@@ -1,11 +1,12 @@
-# Diagnostic A: keep only z = 10 mm single layer
-# Compares against the 3-layer pyramid baseline. If best_loss continues to drop,
-# it confirms the upper z=15/20 mm layers were dead weight.
+# L-BFGS variant of the curve_band experiment.
+# L-BFGS is a quasi-Newton method that takes far fewer outer steps but each
+# step internally evaluates the closure multiple times during line search.
+# Tune `steps` (outer steps) together with `lbfgs_max_iter` (inner iterations).
 
 seed: 0
 device_preference: cuda
 device_ids: [0]
-output_dir: optimized_single_plane
+output_dir: optimized_curve_band_lbfgs
 
 tensorboard:
   enabled: true
@@ -35,10 +36,12 @@ target:
 
 model:
   trajectory_initializer: fixed_grid
-  trajectory_mode: pyramid          # pyramid with a single layer == single plane
-  trajectory_pyramid_layers:
+  trajectory_mode: curve_band
+  trajectory_curve_band_layers:
     - z_m: 0.010
-      xy_step_m: 0.00025
+      along_step_m: 0.00025
+      band_half_width_m: 0.00075
+      band_step_m: 0.00025
   freeze_centers: true
   init_moment_strength: 2.4e-8
   max_moment_strength: 8.0e-8
@@ -56,13 +59,18 @@ model:
   point_chunk_size: 2048
 
 optimizer:
-  name: adam
-  steps: 1500
-  learning_rate: 0.005
-  max_grad_norm: 1.0
+  name: lbfgs
+  steps: 80                  # outer L-BFGS steps; each does up to lbfgs_max_iter inner iterations
+  learning_rate: 1.0         # with strong_wolfe line search, lr=1.0 is the recommended default
+  max_grad_norm: 1.0         # ignored for L-BFGS (line search handles step length)
   print_every: 1
-  early_stop_patience: 120
-  min_delta: 1.0e-5
+  early_stop_patience: 15
+  min_delta: 1.0e-6
+  lbfgs_history_size: 20
+  lbfgs_max_iter: 20
+  lbfgs_tolerance_grad: 1.0e-7
+  lbfgs_tolerance_change: 1.0e-9
+  lbfgs_line_search: strong_wolfe
 
 loss_weights:
   full_image_mse: 1.0
