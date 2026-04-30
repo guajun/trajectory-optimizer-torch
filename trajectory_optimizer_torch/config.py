@@ -53,6 +53,14 @@ class TrajectoryLayerConfig:
 
 
 @dataclass(slots=True)
+class TrajectoryCurveBandLayerConfig:
+    z_m: float
+    along_step_m: float
+    band_half_width_m: float = 0.0
+    band_step_m: float | None = None
+
+
+@dataclass(slots=True)
 class ModelConfig:
     trajectory_initializer: str = "fixed_grid"
     trajectory_mode: str = "uniform"
@@ -60,6 +68,7 @@ class ModelConfig:
     trajectory_z_min_m: float = 0.01
     trajectory_z_max_m: float = 0.02
     trajectory_pyramid_layers: list[TrajectoryLayerConfig] = field(default_factory=list)
+    trajectory_curve_band_layers: list[TrajectoryCurveBandLayerConfig] = field(default_factory=list)
     freeze_centers: bool = True
     init_moment_strength: float = 2.4e-8
     max_moment_strength: float = 8.0e-8
@@ -114,6 +123,10 @@ class ExperimentConfig:
         model_payload = dict(payload["model"])
         model_payload["trajectory_pyramid_layers"] = [
             TrajectoryLayerConfig(**item) for item in model_payload.get("trajectory_pyramid_layers", [])
+        ]
+        model_payload["trajectory_curve_band_layers"] = [
+            TrajectoryCurveBandLayerConfig(**item)
+            for item in model_payload.get("trajectory_curve_band_layers", [])
         ]
         model = ModelConfig(**model_payload)
         optimizer = OptimizerConfig(**payload["optimizer"])

@@ -109,8 +109,8 @@ trajectory_optimizer_torch/
 ### Phase 3: 初始化器扩展
 
 - [ ] 保留 `fixed_grid` 初始化器。
-- [ ] 增加 `single_plane` 初始化器。
-- [ ] 增加 `curve_band` 初始化器，用目标曲线窄带替代整平面铺点。
+- [x] 增加 `single_plane` 初始化器（通过 `pyramid` 单层达成，见 `configs/examples/single_plane.yaml`）。
+- [x] 增加 `curve_band` 初始化器，用目标曲线窄带替代整平面铺点（`trajectory_mode: curve_band`，见 `configs/examples/curve_band.yaml`）。
 - [ ] 增加可插拔初始化器注册表，而不是在 if/else 里硬编码。
 
 ### Phase 4: 质量保障

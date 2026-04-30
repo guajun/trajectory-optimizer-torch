@@ -93,7 +93,7 @@ def run_training(
     )
 
     initializer = trajectory_initializer or build_trajectory_initializer(config)
-    trajectory_spec = initializer.build(config, device)
+    trajectory_spec = initializer.build(config, device, target_samples=target_samples)
     model = SequentialOmniMagnetTrajectoryField(config, target_samples, trajectory_spec, device)
     _attach_target_metadata(target, model)
 

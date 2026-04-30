@@ -1,0 +1,77 @@
+# Diagnostic B: curve-band waypoints — sample a narrow band around the target curve
+# instead of meshing the whole plane. Motivated by the contribution analysis
+# showing that high-contribution waypoints concentrate on a thin strip near y=f(x).
+
+seed: 0
+device_preference: cuda
+device_ids: [0]
+output_dir: optimized_curve_band
+
+tensorboard:
+  enabled: true
+  log_dir: tensorboard
+  flush_secs: 10
+
+grid:
+  plane_half_size_m: 0.005
+  optimize_size: 36
+  render_size: 180
+
+target:
+  expression: amplitude_m * tan(phase_scale_pi * pi * x / plane_half_size_m)
+  blur_sigma_m: 0.00024
+  intensity_gain: 1.0
+  init_sample_count: 1400
+  plot_sample_count: 2200
+  parameters:
+    amplitude_m: 0.0008
+    phase_scale_pi: 0.35
+  projection:
+    batch_size: 4096
+    newton_steps: 8
+    interval_scan_count: 4097
+    global_seed_count: 9
+    local_initial_offsets_m: [0.0]
+
+model:
+  trajectory_initializer: fixed_grid
+  trajectory_mode: curve_band
+  # Each layer: along_step_m controls arc-length spacing along the curve;
+  # band_half_width_m + band_step_m create offsets perpendicular to the tangent.
+  # A pure 1D curve is band_half_width_m: 0.0.
+  trajectory_curve_band_layers:
+    - z_m: 0.010
+      along_step_m: 0.00025
+      band_half_width_m: 0.00075
+      band_step_m: 0.00025
+  freeze_centers: true
+  init_moment_strength: 2.4e-8
+  max_moment_strength: 8.0e-8
+  particle_moment_magnitude: 2.0e-11
+  rotational_drag_coefficient: 2.0e-13
+  static_friction_torque: 1.0e-12
+  optimize_dwell_time: true
+  min_dwell_time_s: 0.003
+  max_dwell_time_s: 0.050
+  init_dwell_time_s: 0.008
+  init_activation_margin: 1.05
+  brightness_gamma: 0.92
+  recency_scale: 0.0
+  waypoint_block_size: 32
+  point_chunk_size: 2048
+
+optimizer:
+  steps: 1500
+  learning_rate: 0.005
+  max_grad_norm: 1.0
+  print_every: 1
+  early_stop_patience: 120
+  min_delta: 1.0e-5
+
+loss_weights:
+  full_image_mse: 1.0
+  moment_l2: 5.0e+12
+  total_dwell_time: 0.0
+  smoothness: 0.0
+  curvature: 0.0
+  z_l2: 0.0
